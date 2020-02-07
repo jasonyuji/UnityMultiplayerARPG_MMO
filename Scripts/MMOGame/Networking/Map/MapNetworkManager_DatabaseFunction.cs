@@ -2,20 +2,21 @@
 using LiteNetLibManager;
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace MultiplayerARPG.MMO
 {
     public partial class MapNetworkManager
     {
-        private IEnumerator LoadPartyRoutine(int id)
+        private async Task LoadPartyRoutine(int id)
         {
             if (id > 0 && !loadingPartyIds.Contains(id))
             {
                 loadingPartyIds.Add(id);
                 ReadPartyJob job = new ReadPartyJob(Database, id);
                 job.Start();
-                yield return StartCoroutine(job.WaitFor());
+                await job.WaitFor();
                 if (job.result != null)
                     parties[id] = job.result;
                 else
@@ -24,14 +25,14 @@ namespace MultiplayerARPG.MMO
             }
         }
 
-        private IEnumerator LoadGuildRoutine(int id)
+        private async Task LoadGuildRoutine(int id)
         {
             if (id > 0 && !loadingGuildIds.Contains(id))
             {
                 loadingGuildIds.Add(id);
                 ReadGuildJob job = new ReadGuildJob(Database, id, CurrentGameInstance.SocialSystemSetting.GuildMemberRoles);
                 job.Start();
-                yield return StartCoroutine(job.WaitFor());
+                await job.WaitFor();
                 if (job.result != null)
                     guilds[id] = job.result;
                 else
@@ -40,68 +41,65 @@ namespace MultiplayerARPG.MMO
             }
         }
 
-        private IEnumerator SaveCharacterRoutine(IPlayerCharacterData playerCharacterData)
+        private async Task SaveCharacterRoutine(IPlayerCharacterData playerCharacterData)
         {
             if (playerCharacterData != null && !savingCharacters.Contains(playerCharacterData.Id))
             {
                 savingCharacters.Add(playerCharacterData.Id);
                 UpdateCharacterJob job = new UpdateCharacterJob(Database, playerCharacterData);
                 job.Start();
-                yield return StartCoroutine(job.WaitFor());
+                await job.WaitFor();
                 savingCharacters.Remove(playerCharacterData.Id);
                 if (LogInfo)
                     Debug.Log("Character [" + playerCharacterData.Id + "] Saved");
             }
         }
 
-        private IEnumerator SaveCharactersRoutine()
+        private async void SaveCharactersRoutine()
         {
             if (savingCharacters.Count == 0)
             {
                 int i = 0;
+                List<Task> tasks = new List<Task>();
                 foreach (BasePlayerCharacterEntity playerCharacter in playerCharacters.Values)
                 {
-                    StartCoroutine(SaveCharacterRoutine(playerCharacter.CloneTo(new PlayerCharacterData())));
+                    if (playerCharacter == null) continue;
+                    tasks.Add(SaveCharacterRoutine(playerCharacter.CloneTo(new PlayerCharacterData())));
                     ++i;
                 }
-                while (savingCharacters.Count > 0)
-                {
-                    yield return 0;
-                }
+                await Task.WhenAll(tasks);
                 if (LogInfo)
                     Debug.Log("Saved " + i + " character(s)");
             }
         }
 
-        private IEnumerator SaveBuildingRoutine(IBuildingSaveData buildingSaveData)
+        private async Task SaveBuildingRoutine(IBuildingSaveData buildingSaveData)
         {
             if (buildingSaveData != null && !savingBuildings.Contains(buildingSaveData.Id))
             {
                 savingBuildings.Add(buildingSaveData.Id);
                 UpdateBuildingJob job = new UpdateBuildingJob(Database, Assets.onlineScene.SceneName, buildingSaveData);
                 job.Start();
-                yield return StartCoroutine(job.WaitFor());
+                await job.WaitFor();
                 savingBuildings.Remove(buildingSaveData.Id);
                 if (LogInfo)
                     Debug.Log("Building [" + buildingSaveData.Id + "] Saved");
             }
         }
 
-        private IEnumerator SaveBuildingsRoutine()
+        private async void SaveBuildingsRoutine()
         {
             if (savingBuildings.Count == 0)
             {
                 int i = 0;
+                List<Task> tasks = new List<Task>();
                 foreach (BuildingEntity buildingEntity in buildingEntities.Values)
                 {
                     if (buildingEntity == null) continue;
-                    StartCoroutine(SaveBuildingRoutine(buildingEntity.CloneTo(new BuildingSaveData())));
+                    tasks.Add(SaveBuildingRoutine(buildingEntity.CloneTo(new BuildingSaveData())));
                     ++i;
                 }
-                while (savingBuildings.Count > 0)
-                {
-                    yield return 0;
-                }
+                await Task.WhenAll(tasks);
                 if (LogInfo)
                     Debug.Log("Saved " + i + " building(s)");
             }

@@ -4,6 +4,7 @@ using UnityEngine;
 using LiteNetLib;
 using LiteNetLib.Utils;
 using LiteNetLibManager;
+using System.Threading.Tasks;
 
 namespace MultiplayerARPG.MMO
 {
@@ -117,11 +118,11 @@ namespace MultiplayerARPG.MMO
                 if (tempUnscaledTime - lastSaveTime > autoSaveDuration)
                 {
                     lastSaveTime = tempUnscaledTime;
-                    StartCoroutine(SaveCharactersRoutine());
+                    SaveCharactersRoutine();
                     if (!IsInstanceMap())
                     {
                         // Don't save building if it's instance map
-                        StartCoroutine(SaveBuildingsRoutine());
+                        SaveBuildingsRoutine();
                     }
                 }
                 if (IsInstanceMap())
@@ -243,10 +244,10 @@ namespace MultiplayerARPG.MMO
 
         public override void OnPeerDisconnected(long connectionId, DisconnectInfo disconnectInfo)
         {
-            StartCoroutine(OnPeerDisconnectedRoutine(connectionId, disconnectInfo));
+            OnPeerDisconnectedRoutine(connectionId, disconnectInfo);
         }
 
-        private IEnumerator OnPeerDisconnectedRoutine(long connectionId, DisconnectInfo disconnectInfo)
+        private async void OnPeerDisconnectedRoutine(long connectionId, DisconnectInfo disconnectInfo)
         {
             // Save player character data
             BasePlayerCharacterEntity playerCharacterEntity;
@@ -255,9 +256,9 @@ namespace MultiplayerARPG.MMO
                 PlayerCharacterData saveCharacterData = playerCharacterEntity.CloneTo(new PlayerCharacterData());
                 while (savingCharacters.Contains(saveCharacterData.Id))
                 {
-                    yield return 0;
+                    await Task.Yield();
                 }
-                yield return StartCoroutine(SaveCharacterRoutine(saveCharacterData));
+                await SaveCharacterRoutine(saveCharacterData);
             }
             UnregisterPlayerCharacter(connectionId);
             base.OnPeerDisconnected(connectionId, disconnectInfo);
@@ -288,14 +289,14 @@ namespace MultiplayerARPG.MMO
         public override void OnServerOnlineSceneLoaded()
         {
             base.OnServerOnlineSceneLoaded();
-            StartCoroutine(OnServerOnlineSceneLoadedRoutine());
+            OnServerOnlineSceneLoadedRoutine();
         }
 
-        private IEnumerator OnServerOnlineSceneLoadedRoutine()
+        private async void OnServerOnlineSceneLoadedRoutine()
         {
             while (!IsReadyToInstantiateObjects())
             {
-                yield return null;
+                await Task.Yield();
             }
             // Spawn buildings
             if (!IsInstanceMap())
@@ -304,7 +305,7 @@ namespace MultiplayerARPG.MMO
                 // Don't load buildings if it's instance map
                 ReadBuildingsJob job = new ReadBuildingsJob(Database, Assets.onlineScene.SceneName);
                 job.Start();
-                yield return StartCoroutine(job.WaitFor());
+                await job.WaitFor();
                 List<BuildingSaveData> buildings = job.result;
                 foreach (BuildingSaveData building in buildings)
                 {
@@ -367,15 +368,15 @@ namespace MultiplayerARPG.MMO
 
             player.IsReady = true;
 
-            StartCoroutine(SetPlayerReadyRoutine(connectionId, userId, accessToken, selectCharacterId));
+            SetPlayerReadyRoutine(connectionId, userId, accessToken, selectCharacterId);
         }
 
-        private IEnumerator SetPlayerReadyRoutine(long connectionId, string userId, string accessToken, string selectCharacterId)
+        private async void SetPlayerReadyRoutine(long connectionId, string userId, string accessToken, string selectCharacterId)
         {
             // Validate access token
             ValidateAccessTokenJob validateAccessTokenJob = new ValidateAccessTokenJob(Database, userId, accessToken);
             validateAccessTokenJob.Start();
-            yield return StartCoroutine(validateAccessTokenJob.WaitFor());
+            await validateAccessTokenJob.WaitFor();
             if (!validateAccessTokenJob.result)
             {
                 if (LogError)
@@ -386,7 +387,7 @@ namespace MultiplayerARPG.MMO
             {
                 ReadCharacterJob loadCharacterJob = new ReadCharacterJob(Database, userId, selectCharacterId);
                 loadCharacterJob.Start();
-                yield return StartCoroutine(loadCharacterJob.WaitFor());
+                await loadCharacterJob.WaitFor();
                 PlayerCharacterData playerCharacterData = loadCharacterJob.result;
                 // If data is empty / cannot find character, disconnect user
                 if (playerCharacterData == null)
@@ -427,13 +428,13 @@ namespace MultiplayerARPG.MMO
                             playerCharacterEntity.UserGold = amount;
                         });
                         getGoldJob.Start();
-                        StartCoroutine(getGoldJob.WaitFor());
+                        await getGoldJob.WaitFor();
                         GetCashJob getCashJob = new GetCashJob(Database, userId, (amount) =>
                         {
                             playerCharacterEntity.UserCash = amount;
                         });
                         getCashJob.Start();
-                        StartCoroutine(getCashJob.WaitFor());
+                        await getCashJob.WaitFor();
 
                         // Prepare saving location for this character
                         if (IsInstanceMap())
@@ -448,13 +449,13 @@ namespace MultiplayerARPG.MMO
                             playerCharacterEntity.UserLevel = level;
                         });
                         loadUserLevelJob.Start();
-                        StartCoroutine(loadUserLevelJob.WaitFor());
+                        await loadUserLevelJob.WaitFor();
 
                         // Load party data, if this map-server does not have party data
                         if (playerCharacterEntity.PartyId > 0)
                         {
                             if (!parties.ContainsKey(playerCharacterEntity.PartyId))
-                                yield return StartCoroutine(LoadPartyRoutine(playerCharacterEntity.PartyId));
+                                await LoadPartyRoutine(playerCharacterEntity.PartyId);
                             if (parties.ContainsKey(playerCharacterEntity.PartyId))
                             {
                                 PartyData party = parties[playerCharacterEntity.PartyId];
@@ -469,7 +470,7 @@ namespace MultiplayerARPG.MMO
                         if (playerCharacterEntity.GuildId > 0)
                         {
                             if (!guilds.ContainsKey(playerCharacterEntity.GuildId))
-                                yield return StartCoroutine(LoadGuildRoutine(playerCharacterEntity.GuildId));
+                                await LoadGuildRoutine(playerCharacterEntity.GuildId);
                             if (guilds.ContainsKey(playerCharacterEntity.GuildId))
                             {
                                 GuildData guild = guilds[playerCharacterEntity.GuildId];
@@ -556,10 +557,10 @@ namespace MultiplayerARPG.MMO
 
         protected override void HandleRequestCashShopInfo(LiteNetLibMessageHandler messageHandler)
         {
-            StartCoroutine(HandleRequestCashShopInfoRoutine(messageHandler));
+            HandleRequestCashShopInfoRoutine(messageHandler);
         }
 
-        private IEnumerator HandleRequestCashShopInfoRoutine(LiteNetLibMessageHandler messageHandler)
+        private async void HandleRequestCashShopInfoRoutine(LiteNetLibMessageHandler messageHandler)
         {
             long connectionId = messageHandler.connectionId;
             BaseAckMessage message = messageHandler.ReadMessage<BaseAckMessage>();
@@ -580,7 +581,7 @@ namespace MultiplayerARPG.MMO
                 // Get user cash amount
                 GetCashJob job = new GetCashJob(Database, userData.userId);
                 job.Start();
-                yield return StartCoroutine(job.WaitFor());
+                await job.WaitFor();
                 cash = job.result;
                 // Set cash shop item ids
                 cashShopItemIds.AddRange(GameInstance.CashShopItems.Keys);
@@ -597,10 +598,10 @@ namespace MultiplayerARPG.MMO
 
         protected override void HandleRequestCashShopBuy(LiteNetLibMessageHandler messageHandler)
         {
-            StartCoroutine(HandleRequestCashShopBuyRoutine(messageHandler));
+            HandleRequestCashShopBuyRoutine(messageHandler);
         }
 
-        private IEnumerator HandleRequestCashShopBuyRoutine(LiteNetLibMessageHandler messageHandler)
+        private async void HandleRequestCashShopBuyRoutine(LiteNetLibMessageHandler messageHandler)
         {
             long connectionId = messageHandler.connectionId;
             RequestCashShopBuyMessage message = messageHandler.ReadMessage<RequestCashShopBuyMessage>();
@@ -621,7 +622,7 @@ namespace MultiplayerARPG.MMO
                 // Get user cash amount
                 GetCashJob job = new GetCashJob(Database, userData.userId);
                 job.Start();
-                yield return StartCoroutine(job.WaitFor());
+                await job.WaitFor();
                 cash = job.result;
                 CashShopItem cashShopItem;
                 if (!GameInstance.CashShopItems.TryGetValue(dataId, out cashShopItem))
@@ -644,7 +645,7 @@ namespace MultiplayerARPG.MMO
                     // Decrease cash amount
                     DecreaseCashJob decreaseCashJob = new DecreaseCashJob(Database, userData.userId, cashShopItem.sellPrice);
                     decreaseCashJob.Start();
-                    yield return StartCoroutine(decreaseCashJob.WaitFor());
+                    await decreaseCashJob.WaitFor();
                     cash = decreaseCashJob.result;
                     playerCharacter.UserCash = cash;
                     // Increase character gold
@@ -670,10 +671,10 @@ namespace MultiplayerARPG.MMO
 
         protected override void HandleRequestCashPackageInfo(LiteNetLibMessageHandler messageHandler)
         {
-            StartCoroutine(HandleRequestCashPackageInfoRoutine(messageHandler));
+            HandleRequestCashPackageInfoRoutine(messageHandler);
         }
 
-        private IEnumerator HandleRequestCashPackageInfoRoutine(LiteNetLibMessageHandler messageHandler)
+        private async void HandleRequestCashPackageInfoRoutine(LiteNetLibMessageHandler messageHandler)
         {
             long connectionId = messageHandler.connectionId;
             BaseAckMessage message = messageHandler.ReadMessage<BaseAckMessage>();
@@ -694,7 +695,7 @@ namespace MultiplayerARPG.MMO
                 // Get user cash amount
                 GetCashJob job = new GetCashJob(Database, userData.userId);
                 job.Start();
-                yield return StartCoroutine(job.WaitFor());
+                await job.WaitFor();
                 cash = job.result;
                 // Set cash package ids
                 cashPackageIds.AddRange(GameInstance.CashPackages.Keys);
@@ -711,10 +712,10 @@ namespace MultiplayerARPG.MMO
 
         protected override void HandleRequestCashPackageBuyValidation(LiteNetLibMessageHandler messageHandler)
         {
-            StartCoroutine(HandleRequestCashPackageBuyValidationRoutine(messageHandler));
+            HandleRequestCashPackageBuyValidationRoutine(messageHandler);
         }
 
-        private IEnumerator HandleRequestCashPackageBuyValidationRoutine(LiteNetLibMessageHandler messageHandler)
+        private async void HandleRequestCashPackageBuyValidationRoutine(LiteNetLibMessageHandler messageHandler)
         {
             long connectionId = messageHandler.connectionId;
             RequestCashPackageBuyValidationMessage message = messageHandler.ReadMessage<RequestCashPackageBuyValidationMessage>();
@@ -736,7 +737,7 @@ namespace MultiplayerARPG.MMO
                 // Get user cash amount
                 GetCashJob job = new GetCashJob(Database, userData.userId);
                 job.Start();
-                yield return StartCoroutine(job.WaitFor());
+                await job.WaitFor();
                 cash = job.result;
                 CashPackage cashPackage;
                 if (!GameInstance.CashPackages.TryGetValue(dataId, out cashPackage))
@@ -749,7 +750,7 @@ namespace MultiplayerARPG.MMO
                     // Increase cash amount
                     IncreaseCashJob increaseCashJob = new IncreaseCashJob(Database, userData.userId, cashPackage.cashAmount);
                     increaseCashJob.Start();
-                    yield return StartCoroutine(increaseCashJob.WaitFor());
+                    await increaseCashJob.WaitFor();
                     cash = increaseCashJob.result;
                     playerCharacter.UserCash = cash;
                 }
@@ -795,7 +796,7 @@ namespace MultiplayerARPG.MMO
                                 {
                                     if (!Assets.TryGetSpawnedObject(warpingCharacter, out warpingCharacterEntity))
                                         continue;
-                                    StartCoroutine(WarpCharacterToInstanceRoutine(warpingCharacterEntity, peerInfo.extra));
+                                    WarpCharacterToInstanceRoutine(warpingCharacterEntity, peerInfo.extra);
                                 }
                             }
                         }

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace MultiplayerARPG.MMO
 {
-    public abstract class DatabaseJob : ThreadedJob
+    public abstract class DatabaseJob : AsyncThreadedJob
     {
         protected BaseDatabase database;
         protected Action onFinished;
@@ -20,7 +20,7 @@ namespace MultiplayerARPG.MMO
         }
     }
 
-    public abstract class DatabaseJob<T> : ThreadedJob
+    public abstract class DatabaseJob<T> : AsyncThreadedJob
     {
         protected BaseDatabase database;
         public T result { get; protected set; }
